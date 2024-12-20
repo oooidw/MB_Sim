@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import block_diag
+from scipy.sparse import block_diag as block_diag_sparse
+from scipy.sparse import dok_matrix
 from scipy.sparse import csr_matrix
 
 
@@ -209,33 +211,44 @@ def build_HK(L,k):
     return h
 
 
-def build_fullH(L, pbc=True, sparse=False):
+def build_fullH(L, pbc=True, sparse=False, block=False):
     """
         Build the full Hamiltonian matrix.
 
         Args:
             L (int): The lenght of the system.
-            pbc (bool): The periodic boundary condition. True for pbc (default), False for obc.
+            pbc (bool): The periodic boundary condition. True for pbc, False for obc (default True).
+            sparse (bool): True to get a sparse matrix, False for a dense one (default False).
+            block (bool): True to get calculate the Hamiltonian as sums of blocks using translational symmetry, False for the full one (default False). PBC are required and the result is always a sparse matrix.
 
         Returns:
             np.ndarray or csr_matrix: The Hamiltonian matrix.
     """
-    if sparse:
-        h = csr_matrix((2**L,2**L))
-    else:   
-        h = np.zeros((2**L,2**L))
+    
+    if not block:
+        if sparse:
+            h = dok_matrix((2**L,2**L))
+        else:   
+            h = np.zeros((2**L,2**L))
 
-    for n in range(2**L):
-        output = apply_H(n, L, pbc)
-        for m in output:
-            h[n,m[1]] += m[0]
+        for n in range(2**L):
+            output = apply_H(n, L, pbc)
+            for m in output:
+                h[n,m[1]] += m[0]
 
-    return h
+        return h
+    
+    else:
+        if not pbc:
+            raise ValueError("Block Hamiltonian can be calculated only with periodic boundary conditions")
+        if not sparse:
+            raise ValueError("Block Hamiltonian can be calculated only as a sparse matrix")
+        return build_blockH(L)
 
 
 def build_blockH(L):
     """
-    Build the block Hamiltonian matrix.
+    Build the block Hamiltonian matrix with translational symmetry.
 
     Args:
         L (int): The lenght of the system.
