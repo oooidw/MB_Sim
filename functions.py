@@ -6,13 +6,14 @@ from scipy.sparse import dok_matrix
 from scipy.sparse import csr_matrix
 
 
-def apply_H_pbc(state, L):
+def apply_H_pbc(state, L, J):
     """
     Apply the XZX Hamiltonian to a state with pbc.
     
     Args:
         state (int): The input state.
         L (int): The lenght of the system.
+        J (float): The interaction constant.
         
     Returns:
         list: The list of [coefficient, state].
@@ -22,7 +23,7 @@ def apply_H_pbc(state, L):
     for i in range(L):
         # Application of simga_z^i
         # 1 if the bit is 1 and -1 if the bit is 0
-        coeff = 2 * (state & 2**i)/2**i - 1
+        coeff = -1 * (2 * (state & 2**i)/2**i - 1)
 
         # Application of sigma_x^(i-1) and simga_x^(i+1)
         # Flip of the i-th and (i+1)-th bits
@@ -30,32 +31,38 @@ def apply_H_pbc(state, L):
         
         output.append([coeff, m])
 
+        if J!=0:
+            # Application of simga_y^i and simga_y^(i+1) 
+            # 1 if the bit is 1 and -1 if the bit is 0
+            # Flip of the i-th and (i+1)-th bits
+            coeff = -J * (2 * (state & 2**i)/2**i - 1) * (2 * (state & 2**((i+1)%L))/2**((i+1)%L) - 1)
+
+            m = state ^ (2**i + 2**((i+1)%L))
+            
+            output.append([coeff, m])
+
     return output
 
 
-def apply_H_obc(state, L):
+def apply_H_obc(state, L, J):
     """
     Apply the XZX Hamiltonian to a state with obc.
     
     Args:
         state (int): The input state.
         L (int): The lenght of the system.
+        J (float): The interaction constant.
         
     Returns:
         list: The list of [coefficient, state].
     """
     output = []
 
-    # First term
-    #coeff = 2 * (state & 1) - 1.
-    #m = state ^ 2
-    #output.append([coeff, m])
-
     for i in range(1,L-1):
 
         # Application of simga_z^i
         # 1 if the bit is 1 and -1 if the bit is 0
-        coeff = 2 * (state & 2**i)/2**i - 1
+        coeff = -1 * (2 * (state & 2**i)/2**i - 1)
 
         # Application of sigma_x^(i-1) and simga_x^(i+1)
         # Flip of the i-th and (i+1)-th bits
@@ -63,15 +70,20 @@ def apply_H_obc(state, L):
 
         output.append([coeff, m])
 
-    # Last term
-    #coeff = 2 * (state & 2**(L-1))/2**(L-1) - 1
-    #m = state ^ 2**(L-2)
-    #output.append([coeff, m])
+        if J!=0:
+            # Application of simga_y^i and simga_y^(i+1) 
+            # 1 if the bit is 1 and -1 if the bit is 0
+            # Flip of the i-th and (i+1)-th bits
+            coeff = -J * (2 * (state & 2**i)/2**i - 1) * (2 * (state & 2**(i+1))/2**(i+1) - 1)
+
+            m = state ^ (2**i + 2**(i+1))
+            
+            output.append([coeff, m])
     
     return output
 
 
-def apply_H(state, L, pbc=True):
+def apply_H(state, L, pbc=True, J=0):
     """
     Apply the XZX Hamiltonian to a state with the wanted periodic conditions.
     
@@ -79,14 +91,15 @@ def apply_H(state, L, pbc=True):
         state (int): The input state.
         L (int): The lenght of the system.
         pbc (bool): The periodic boundary condition. True for pbc (default), False for obc.
+        J (float): The interaction constant (default 0).
         
     Returns:
         list: The list of [coefficient, state].
     """
     if pbc :
-        return apply_H_pbc(state, L)
+        return apply_H_pbc(state, L, J)
     else:
-        return apply_H_obc(state, L)
+        return apply_H_obc(state, L, J)
 
 
 def traslate_state(state, L):
@@ -181,13 +194,14 @@ def get_RS(n,L):
     return [min_state, d]
 
 
-def build_HK(L,k):
+def build_HK(L, k, J=0):
     """
     Build the Hamiltonian matrix for the subspace with wave number k.
 
     Args:
         L (int): The lenght of the system.
         k (int): The wave number.
+        J (float): The interaction constant (default 0).
 
     Returns:
         np.ndarray: The Hamiltonian matrix of the subspace.
@@ -200,7 +214,7 @@ def build_HK(L,k):
     for n in basis:
         i = basis.index(n)
         yn = np.sqrt(check_period(n,L))/L
-        output = apply_H(n, L)
+        output = apply_H(n, L, pbc=True, J=J)
         for m in output:
             mm,d = get_RS(m[1],L)
             if mm in basis:
@@ -211,7 +225,7 @@ def build_HK(L,k):
     return h
 
 
-def build_fullH(L, pbc=True, sparse=False, block=False):
+def build_fullH(L, pbc=True, sparse=False, block=False, J=0):
     """
         Build the full Hamiltonian matrix.
 
@@ -220,6 +234,7 @@ def build_fullH(L, pbc=True, sparse=False, block=False):
             pbc (bool): The periodic boundary condition. True for pbc, False for obc (default True).
             sparse (bool): True to get a sparse matrix, False for a dense one (default False).
             block (bool): True to get calculate the Hamiltonian as sums of blocks using translational symmetry, False for the full one (default False). PBC are required and the result is always a sparse matrix.
+            J (float): The interaction constant (default 0).
 
         Returns:
             np.ndarray or csr_matrix: The Hamiltonian matrix.
@@ -232,7 +247,7 @@ def build_fullH(L, pbc=True, sparse=False, block=False):
             h = np.zeros((2**L,2**L))
 
         for n in range(2**L):
-            output = apply_H(n, L, pbc)
+            output = apply_H(n, L, pbc, J)
             for m in output:
                 h[n,m[1]] += m[0]
 
