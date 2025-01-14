@@ -6,7 +6,7 @@ from scipy.sparse import dok_matrix
 from scipy.sparse import csr_matrix
 
 
-def apply_H_pbc(state, L, J):
+def apply_H_pbc(state, L, J , K):
     """
     Apply the XZX Hamiltonian to a state with pbc.
     
@@ -14,6 +14,7 @@ def apply_H_pbc(state, L, J):
         state (int): The input state.
         L (int): The lenght of the system.
         J (float): The interaction constant.
+        K (float): The XZX constant.
         
     Returns:
         list: The list of [coefficient, state].
@@ -23,7 +24,7 @@ def apply_H_pbc(state, L, J):
     for i in range(L):
         # Application of simga_z^i
         # 1 if the bit is 1 and -1 if the bit is 0
-        coeff = -1 * (2 * (state & 2**i)/2**i - 1)
+        coeff = -K * (2 * (state & 2**i)/2**i - 1)
 
         # Application of sigma_x^(i-1) and simga_x^(i+1)
         # Flip of the i-th and (i+1)-th bits
@@ -44,7 +45,7 @@ def apply_H_pbc(state, L, J):
     return output
 
 
-def apply_H_obc(state, L, J):
+def apply_H_obc(state, L, J, K):
     """
     Apply the XZX Hamiltonian to a state with obc.
     
@@ -52,6 +53,7 @@ def apply_H_obc(state, L, J):
         state (int): The input state.
         L (int): The lenght of the system.
         J (float): The interaction constant.
+        K (float): The XZX constant.
         
     Returns:
         list: The list of [coefficient, state].
@@ -62,7 +64,7 @@ def apply_H_obc(state, L, J):
 
         # Application of simga_z^i
         # 1 if the bit is 1 and -1 if the bit is 0
-        coeff = -1 * (2 * (state & 2**i)/2**i - 1)
+        coeff = -K * (2 * (state & 2**i)/2**i - 1)
 
         # Application of sigma_x^(i-1) and simga_x^(i+1)
         # Flip of the i-th and (i+1)-th bits
@@ -83,7 +85,7 @@ def apply_H_obc(state, L, J):
     return output
 
 
-def apply_H(state, L, pbc=True, J=0):
+def apply_H(state, L, pbc=True, J=0, K=1):
     """
     Apply the XZX Hamiltonian to a state with the wanted periodic conditions.
     
@@ -92,14 +94,15 @@ def apply_H(state, L, pbc=True, J=0):
         L (int): The lenght of the system.
         pbc (bool): The periodic boundary condition. True for pbc (default), False for obc.
         J (float): The interaction constant (default 0).
+        K (float): The XZX constant (default 1).
         
     Returns:
         list: The list of [coefficient, state].
     """
     if pbc :
-        return apply_H_pbc(state, L, J)
+        return apply_H_pbc(state, L, J, K)
     else:
-        return apply_H_obc(state, L, J)
+        return apply_H_obc(state, L, J, K)
 
 
 def traslate_state(state, L):
@@ -194,7 +197,7 @@ def get_RS(n,L):
     return [min_state, d]
 
 
-def build_HK(L, k, J=0):
+def build_HK(L, k, J=0, K=1):
     """
     Build the Hamiltonian matrix for the subspace with wave number k.
 
@@ -214,7 +217,7 @@ def build_HK(L, k, J=0):
     for n in basis:
         i = basis.index(n)
         yn = np.sqrt(check_period(n,L))/L
-        output = apply_H(n, L, pbc=True, J=J)
+        output = apply_H(n, L, pbc=True, J=J, K=K)
         for m in output:
             mm,d = get_RS(m[1],L)
             if mm in basis:
@@ -225,7 +228,7 @@ def build_HK(L, k, J=0):
     return h
 
 
-def build_fullH(L, pbc=True, sparse=False, block=False, J=0):
+def build_fullH(L, pbc=True, sparse=False, block=False, J=0, K=1):
     """
         Build the full Hamiltonian matrix.
 
@@ -247,7 +250,7 @@ def build_fullH(L, pbc=True, sparse=False, block=False, J=0):
             h = np.zeros((2**L,2**L))
 
         for n in range(2**L):
-            output = apply_H(n, L, pbc, J)
+            output = apply_H(n, L, pbc, J, K)
             for m in output:
                 h[n,m[1]] += m[0]
 
@@ -258,10 +261,10 @@ def build_fullH(L, pbc=True, sparse=False, block=False, J=0):
             raise ValueError("Block Hamiltonian can be calculated only with periodic boundary conditions")
         if not sparse:
             raise ValueError("Block Hamiltonian can be calculated only as a sparse matrix")
-        return build_blockH(L)
+        return build_blockH(L, J, K)
 
 
-def build_blockH(L):
+def build_blockH(L, J=0, K=1):
     """
     Build the block Hamiltonian matrix with translational symmetry.
 
@@ -273,8 +276,8 @@ def build_blockH(L):
     """
 
     zero = build_HK(L,0)
-    h = block_diag(zero,build_HK(L,1))
+    h = block_diag(zero,build_HK(L,1,J,K))
     for k in range(2,L):
-        h=block_diag(h,build_HK(L,k))
+        h=block_diag(h,build_HK(L,k,J,K))
 
     return h
