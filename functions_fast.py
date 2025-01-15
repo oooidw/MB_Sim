@@ -1,5 +1,5 @@
 import numpy as np
-from numba import jit,njit
+from numba import njit
 
 
 @njit
@@ -36,7 +36,7 @@ def apply_H_pbc(state: int, L: int, J: float, K: float) -> np.ndarray:
             coeff_out[idx] = coeff
             idx += 1
 
-    return coeff_out,state_out  # Return the populated part of the array
+    return coeff_out[:idx],state_out[:idx]  # Return the populated part of the array
 
 @njit
 def traslate_state(state: int, L: int) -> int:
@@ -115,7 +115,7 @@ def build_HK(L: int, k: int, J=0, K=1) -> np.ndarray:
         coeff_out, state_out = apply_H_pbc(n, L, J=J, K=K)
 
         for coeff,m in zip(coeff_out,state_out):
-            mm, d = get_RS(int(m), L)
+            mm, d = get_RS(m, L)
             if mm in basis:
                 j = np.where(basis == mm)[0][0]
                 ym = np.sqrt(check_period(mm, L)) / L
